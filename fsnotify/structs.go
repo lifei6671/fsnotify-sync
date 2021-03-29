@@ -27,11 +27,11 @@ func LoadFromFile(configFile string) ([]*Rule, error) {
 		if section.Name() == ini.DefaultSection || strings.Contains(section.Name(), ".") {
 			continue
 		}
-		log.Logger.Info(section.Name())
 		rule := &Rule{
-			Gid:  cfg.Section("").Key("gid").MustInt(),
-			Uid:  cfg.Section("").Key("uid").MustInt(),
-			Perm: uint32(cfg.Section("").Key("perm").MustInt64()),
+			Gid:       cfg.Section("").Key("gid").MustInt(),
+			Uid:       cfg.Section("").Key("uid").MustInt(),
+			Perm:      uint32(cfg.Section("").Key("perm").MustInt64()),
+			Recursion: cfg.Section("").Key("recursion").MustBool(true),
 		}
 		err = cfg.Section(section.Name()).MapTo(rule)
 		if err != nil {
@@ -95,6 +95,7 @@ func (r *Rule) Watcher(ctx context.Context) error {
 			log.Logger.Errorf("添加监听目录失败 -> %s - %+v", r.Root, err)
 			return err
 		}
+		log.Logger.Infof("添加监听目录 -> %s", r.Root)
 	}
 	defer ioutils.Close(watcher)
 	go r.handler(ctx)
@@ -195,6 +196,12 @@ func (r *Rule) parse(src string) string {
 	var n int
 
 	for local, remote := range r.Files {
+		if ioutils.IsFile(local) {
+			if filepath.Base(local) == filepath.Base(src) {
+				return remote
+			}
+			return filepath.Join(remote, filepath.Base(local))
+		}
 		local = strings.TrimSuffix(local, "*")
 		if strings.HasPrefix(src, local) && len(local) > n {
 			n = len(local)

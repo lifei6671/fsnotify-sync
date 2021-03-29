@@ -37,7 +37,7 @@ func Run(ctx context.Context) error {
 				go func(rule *Rule) {
 					err := rule.Watcher(ctx)
 					if err != nil {
-						log.Logger.Fatalf("监听目录失败 -> %s - %+v", rule.Root, err)
+						log.Logger.Errorf("监听目录失败 -> %s - %+v", rule.Root, err)
 					}
 				}(rule)
 			}
