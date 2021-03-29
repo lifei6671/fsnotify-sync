@@ -35,15 +35,38 @@ func LoadFromFile(configFile string) ([]*Rule, error) {
 			Uid:       cfg.Section("").Key("uid").MustInt(),
 			Recursion: cfg.Section("").Key("recursion").MustBool(true),
 		}
-		perm, err := strconv.ParseInt(cfg.Section("").Key("perm").String(), 8, 0)
+		perm, err := strconv.ParseInt(cfg.Section("").Key("file_perm").String(), 8, 0)
+		if err != nil {
+			log.Logger.Fatalf("解析文件权限失败 -> %s - %+v", cfg.Section("").Key("file_perm").String(), err)
+		}
+		rule.FilePerm = uint32(perm)
 
-		rule.Perm = uint32(perm)
+		perm, err = strconv.ParseInt(cfg.Section("").Key("dir_perm").String(), 8, 0)
+		if err != nil {
+			log.Logger.Fatalf("解析目录权限失败 -> %s - %+v", cfg.Section("").Key("file_perm").String(), err)
+		}
+		rule.DirPerm = uint32(perm)
 
 		err = cfg.Section(section.Name()).MapTo(rule)
 		if err != nil {
 			log.Logger.Errorf("解析配置文件失败 -> %s - %+v", section.Name(), err)
 			return nil, err
 		}
+		if cfg.Section(section.Name()).HasKey("file_perm") {
+			perm, err := strconv.ParseInt(cfg.Section(section.Name()).Key("file_perm").String(), 8, 0)
+			if err != nil {
+				log.Logger.Fatalf("解析文件权限失败 -> %s - %+v", cfg.Section("").Key("file_perm").String(), err)
+			}
+			rule.FilePerm = uint32(perm)
+		}
+		if cfg.Section(section.Name()).HasKey("dir_perm") {
+			perm, err = strconv.ParseInt(cfg.Section(section.Name()).Key("dir_perm").String(), 8, 0)
+			if err != nil {
+				log.Logger.Fatalf("解析目录权限失败 -> %s - %+v", cfg.Section("").Key("file_perm").String(), err)
+			}
+			rule.DirPerm = uint32(perm)
+		}
+
 		cur := cfg.Section(section.Name() + ".files")
 		rule.Files = cur.KeysHash()
 		rule.Ignore = cfg.Section(section.Name() + ".ignore").Key("ignore").ValueWithShadows()
@@ -58,7 +81,8 @@ type Rule struct {
 	Recursion bool                `ini:"recursion"`
 	Gid       int                 `ini:"gid"`
 	Uid       int                 `ini:"uid"`
-	Perm      uint32              `ini:"perm"`
+	FilePerm  uint32              `ini:"-"`
+	DirPerm   uint32              `ini:"-"`
 	Files     map[string]string   `ini:"files,,delim"`
 	Ignore    []string            `ini:"ignore,omitempty,allowshadow"`
 	ch        chan fsnotify.Event `ini:"-"`
@@ -164,7 +188,7 @@ func (r *Rule) handler(ctx context.Context) {
 			_ = r.createDir(dstFile)
 			//如果是个目录则要创建目录
 			if ioutils.IsFile(event.Name) {
-				_, err := ioutils.CopyFile(dstFile, event.Name, fs.FileMode(r.Perm))
+				_, err := ioutils.CopyFile(dstFile, event.Name, fs.FileMode(r.FilePerm))
 				if err != nil {
 					log.Logger.Errorf("复制文件失败 -> %s - %s - %+v", event.Name, dstFile, err)
 					continue
@@ -177,12 +201,12 @@ func (r *Rule) handler(ctx context.Context) {
 				log.Logger.Errorf("修改文件所有者失败 ->  %s - %s - %+v", event.Name, dstFile, err)
 				continue
 			}
-			err = os.Chmod(dstFile, fs.FileMode(r.Perm).Perm())
+			err = os.Chmod(dstFile, fs.FileMode(r.DirPerm).Perm())
 			if err != nil {
 				log.Logger.Errorf("修改文件权限失败 -> %s - %+v", dstFile, err)
 				continue
 			}
-			log.Logger.Infof("文件或目录复制成功->  %s -> %s:%04o", event.Name, dstFile, r.Perm)
+			log.Logger.Infof("文件或目录复制成功->  %s -> %s:%04o", event.Name, dstFile, r.FilePerm)
 		case <-ctx.Done():
 			return
 		}
@@ -255,7 +279,7 @@ func (r *Rule) createDir(filename string) error {
 	if ioutils.FileExist(dstDir) {
 		return nil
 	}
-	err := os.MkdirAll(dstDir, fs.FileMode(r.Perm))
+	err := os.MkdirAll(dstDir, fs.FileMode(r.DirPerm))
 	if err != nil {
 		log.Logger.Errorf("创建目录失败 -> %s - %s - %+v", filename, dstDir, err)
 		return err
