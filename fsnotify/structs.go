@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -28,6 +29,7 @@ func LoadFromFile(configFile string) ([]*Rule, error) {
 			continue
 		}
 		rule := &Rule{
+			Name:      section.Name(),
 			Gid:       cfg.Section("").Key("gid").MustInt(),
 			Uid:       cfg.Section("").Key("uid").MustInt(),
 			Perm:      uint32(cfg.Section("").Key("perm").MustInt64()),
@@ -47,6 +49,7 @@ func LoadFromFile(configFile string) ([]*Rule, error) {
 }
 
 type Rule struct {
+	Name      string              `ini:"-"`
 	Root      string              `ini:"root"`
 	Recursion bool                `ini:"recursion"`
 	Gid       int                 `ini:"gid"`
@@ -57,6 +60,7 @@ type Rule struct {
 	ch        chan fsnotify.Event `ini:"-"`
 	isInit    bool                `ini:"-"`
 	watcher   *fsnotify.Watcher   `ini:"-"`
+	eventTime *sync.Map
 }
 
 func (r *Rule) Watcher(ctx context.Context) error {
@@ -119,9 +123,18 @@ func (r *Rule) Watcher(ctx context.Context) error {
 				event.Op&fsnotify.Remove == fsnotify.Remove ||
 				event.Op&fsnotify.Chmod == fsnotify.Chmod ||
 				event.Op&fsnotify.Rename == fsnotify.Rename {
-				log.Logger.Infof("file changed -> %s", event.Name)
+				mt := ioutils.GetFileModTime(event.Name)
+				if mt == r.getFileModTime(event.Name) {
+					//log.Logger.Infof("跳过修改时间不变的文件 -> %s",event.Name)
+					continue
+				}
+				r.eventTime.Store(event.Name, mt)
+
+				log.Logger.Infof("file changed -> %s %d", event.Name, mt)
 				r.ch <- event
 			}
+		case err := <-watcher.Errors:
+			log.Logger.Errorf("出现未处理异常 -> %+v", r.Name, err)
 		case <-ctx.Done():
 			return ctx.Err()
 		}
@@ -143,7 +156,7 @@ func (r *Rule) handler(ctx context.Context) {
 				}
 				continue
 			}
-			time.Sleep(time.Microsecond * 200)
+			time.Sleep(time.Millisecond * 100)
 			_ = r.createDir(dstFile)
 			//如果是个目录则要创建目录
 			if ioutils.IsFile(event.Name) {
@@ -171,6 +184,7 @@ func (r *Rule) init() {
 	if r.isInit {
 		return
 	}
+	r.eventTime = &sync.Map{}
 	defer func() {
 		r.isInit = true
 	}()
@@ -243,6 +257,13 @@ func (r *Rule) createDir(filename string) error {
 		return err
 	}
 	return err
+}
+
+func (r *Rule) getFileModTime(filename string) int64 {
+	if v, ok := r.eventTime.Load(filename); ok {
+		return v.(int64)
+	}
+	return 0
 }
 
 func (r *Rule) String() string {

@@ -1,8 +1,11 @@
 package ioutils
 
 import (
+	"github.com/lifei6671/fsnotify-sync/internal/log"
 	"io"
 	"os"
+	"strings"
+	"time"
 )
 
 func Close(closer io.Closer) {
@@ -40,4 +43,21 @@ func CopyFile(dstName, srcName string, perm os.FileMode) (written int64, err err
 	}
 	defer Close(dst)
 	return io.Copy(dst, src)
+}
+func GetFileModTime(path string) int64 {
+	path = strings.Replace(path, "\\", "/", -1)
+	f, err := os.Open(path)
+	if err != nil {
+		log.Logger.Errorf("Failed to open file on '%s': %s", path, err)
+		return time.Now().Unix()
+	}
+	defer f.Close()
+
+	fi, err := f.Stat()
+	if err != nil {
+		log.Logger.Errorf("Failed to get file stats: %s", err)
+		return time.Now().Unix()
+	}
+
+	return fi.ModTime().Unix()
 }
