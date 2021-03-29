@@ -11,6 +11,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -32,9 +33,12 @@ func LoadFromFile(configFile string) ([]*Rule, error) {
 			Name:      section.Name(),
 			Gid:       cfg.Section("").Key("gid").MustInt(),
 			Uid:       cfg.Section("").Key("uid").MustInt(),
-			Perm:      uint32(cfg.Section("").Key("perm").MustInt64()),
 			Recursion: cfg.Section("").Key("recursion").MustBool(true),
 		}
+		perm, err := strconv.ParseInt(cfg.Section("").Key("perm").String(), 8, 0)
+
+		rule.Perm = uint32(perm)
+
 		err = cfg.Section(section.Name()).MapTo(rule)
 		if err != nil {
 			log.Logger.Errorf("解析配置文件失败 -> %s - %+v", section.Name(), err)
@@ -173,7 +177,12 @@ func (r *Rule) handler(ctx context.Context) {
 				log.Logger.Errorf("修改文件所有者失败 ->  %s - %s - %+v", event.Name, dstFile, err)
 				continue
 			}
-			log.Logger.Infof("文件或目录复制成功->  %s -> %s", event.Name, dstFile)
+			err = os.Chmod(dstFile, fs.FileMode(r.Perm).Perm())
+			if err != nil {
+				log.Logger.Errorf("修改文件权限失败 -> %s - %+v", dstFile, err)
+				continue
+			}
+			log.Logger.Infof("文件或目录复制成功->  %s -> %s:%04o", event.Name, dstFile, r.Perm)
 		case <-ctx.Done():
 			return
 		}

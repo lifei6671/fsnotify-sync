@@ -18,7 +18,7 @@ gid=500
 #新目录或文件的uid
 uid=500
 #目录或文件的权限值
-perm=775
+perm=0775
 
 #项目名称
 [fsnotify-sync]
