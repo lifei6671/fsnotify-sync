@@ -31,7 +31,8 @@ func Run(ctx context.Context) error {
 				log.Logger.Errorf("解析配置文件失败 -> %s - %+v", config, err)
 				return err
 			}
-			//log.Logger.Fatal(rules)
+
+			log.Logger.Infof("规则列表 ->%+v", rules)
 
 			for _, rule := range rules {
 				go func(rule *Rule) {

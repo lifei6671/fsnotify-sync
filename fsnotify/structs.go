@@ -153,7 +153,7 @@ func (r *Rule) Watcher(ctx context.Context) error {
 				event.Op&fsnotify.Rename == fsnotify.Rename {
 				mt := ioutils.GetFileModTime(event.Name)
 				if mt == r.getFileModTime(event.Name) {
-					//log.Logger.Infof("跳过修改时间不变的文件 -> %s",event.Name)
+					log.Logger.Infof("跳过修改时间不变的文件 -> %s:%d", event.Name, mt)
 					continue
 				}
 				r.eventTime.Store(event.Name, mt)
@@ -243,12 +243,10 @@ func (r *Rule) parse(src string) string {
 	var n int
 
 	for local, remote := range r.Files {
-		if ioutils.IsFile(local) {
-			if filepath.Base(local) == filepath.Base(src) {
-				return remote
-			}
-			return filepath.Join(remote, filepath.Base(local))
+		if ioutils.IsFile(local) && filepath.Base(local) == filepath.Base(src) {
+			return remote
 		}
+
 		local = strings.TrimSuffix(local, "*")
 		if strings.HasPrefix(src, local) && len(local) > n {
 			n = len(local)
